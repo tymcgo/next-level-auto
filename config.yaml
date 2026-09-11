@@ -1,0 +1,162 @@
+# config.yaml — Next Level Auto (Cloud-Native, Zero Local Compute)
+# All services run in free cloud tiers. ThinkPad only needs a browser.
+
+shop:
+  name: "Next Level Auto"
+  labor_rate_per_hour: 125.00
+  labor_rate_diagnostic: 150.00
+  target_margin_percent: 35
+  tax_rate_percent: 5
+  currency: "USD"
+  timezone: "America/Regina"
+
+approval:
+  require_approval_above: 750.00
+  approver: "tyler"
+  sla_hours: 3
+  escalation_interval_minutes: 15
+
+# =============================================================================
+# LLM — Cloud-based (no local compute needed)
+# =============================================================================
+planner:
+  max_output_tokens: 1200
+  temperature: 0.1
+  max_retries: 2
+
+  # Primary: OpenRouter (free tier models available)
+  # Sign up at https://openrouter.ai — get free API key
+  litellm:
+    model: "openrouter/google/gemma-2-9b-it:free"
+    api_base: "https://openrouter.ai/api/v1"
+    api_key: "${OPENROUTER_API_KEY}"
+    timeout: 30
+    fallback_models:
+      - "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+      - "openrouter/mistralai/mistral-7b-instruct:free"
+
+  # Alternative: Together AI (free credits)
+  # litellm:
+  #   model: "together_ai/meta-llama/Llama-3.2-3B-Instruct-Turbo"
+  #   api_base: "https://api.together.xyz/v1"
+  #   api_key: "${TOGETHER_API_KEY}"
+  #   timeout: 30
+
+  # Alternative: Groq (free tier, very fast)
+  # litellm:
+  #   model: "groq/llama-3.1-8b-instant"
+  #   api_base: "https://api.groq.com/openai/v1"
+  #   api_key: "${GROQ_API_KEY}"
+  #   timeout: 30
+
+# =============================================================================
+# CLOUD SERVICES (all free tier)
+# =============================================================================
+cloudflare:
+  workers:
+    telegram_webhook:
+      route: "https://nla-telegram.your-subdomain.workers.dev"
+      secrets:
+        - TELEGRAM_BOT_TOKEN
+        - TELEGRAM_WEBHOOK_SECRET
+        - SUPABASE_URL
+        - SUPABASE_SERVICE_KEY
+        - OPENROUTER_API_KEY
+    dashboard_api:
+      route: "https://nla-api.your-subdomain.workers.dev"
+
+supabase:
+  # Use Supabase cloud free tier (500MB, 2M requests/month)
+  # Sign up at https://supabase.com — free project
+  url: "${SUPABASE_URL}"
+  anon_key: "${SUPABASE_ANON_KEY}"
+  service_key: "${SUPABASE_SERVICE_KEY}"
+
+# =============================================================================
+# CARE PLANS
+# =============================================================================
+care_plans:
+  - id: "basic"
+    name: "Basic Care"
+    monthly_price: 49.99
+    description: "Oil change, tire rotation, multi-point inspection — every 5,000 km or 6 months"
+    includes:
+      - "Synthetic oil change"
+      - "Tire rotation & balance"
+      - "21-point inspection"
+      - "Fluid top-up"
+    max_vehicles: 1
+    contract_months: 12
+
+  - id: "plus"
+    name: "Plus Care"
+    monthly_price: 89.99
+    description: "Everything in Basic + brake service, battery test, alignment check, roadside assistance"
+    includes:
+      - "All Basic Care benefits"
+      - "Brake inspection & service"
+      - "Battery health test"
+      - "Alignment check"
+      - "24/7 Roadside assistance"
+      - "Loaner car (1x/contract)"
+    max_vehicles: 2
+    contract_months: 12
+
+  - id: "premium"
+    name: "Premium Care"
+    monthly_price: 149.99
+    description: "Full coverage maintenance + repairs, unlimited services, priority scheduling"
+    includes:
+      - "All Plus Care benefits"
+      - "Unlimited scheduled maintenance"
+      - "Brake pad/rotor replacement (1 set/contract)"
+      - "Priority scheduling"
+      - "Free diagnostic on repairs >$500"
+      - "Annual detailing"
+      - "Unlimited loaner cars"
+    max_vehicles: 3
+    contract_months: 24
+
+# =============================================================================
+# PARTS SUPPLIERS
+# =============================================================================
+parts_suppliers:
+  - name: "NAPA AutoParts"
+    lead_time_days: 2
+    free_shipping_above: 100
+  - name: "RockAuto"
+    lead_time_days: 5
+    free_shipping_above: 150
+  - name: "Local OEM Dealer"
+    lead_time_days: 1
+    free_shipping_above: 0
+  - name: "LKQ (Recycled)"
+    lead_time_days: 1
+    free_shipping_above: 0
+
+# =============================================================================
+# NOTIFICATIONS
+# =============================================================================
+notifications:
+  test_mode: true
+  test_prefix: "[TEST] "
+  telegram_chat_id: "${TELEGRAM_ADMIN_CHAT_ID}"
+  slack_webhook: "${SLACK_WEBHOOK_URL}"
+  daily_digest_hours: [8, 16]
+
+# =============================================================================
+# ONLINE SERVICES
+# =============================================================================
+online_services:
+  stripe:
+    test_mode: true
+    webhook_secret: "${STRIPE_WEBHOOK_SECRET}"
+  domain: "https://nextlevelauto.vercel.app"
+
+# =============================================================================
+# EVAL
+# =============================================================================
+eval:
+  enabled: true
+  moments_count: 30
+  report_output: "reports/eval_report.json"

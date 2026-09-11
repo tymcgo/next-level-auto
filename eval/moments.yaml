@@ -1,0 +1,345 @@
+# Eval Suite — 30 Shop Moments for Next Level Auto
+# Each moment tests a specific scenario the system must handle correctly.
+
+version: "1.0.0"
+description: "30 real-world shop moments to validate system correctness"
+
+moments:
+  # === MISFIRE / DIAGNOSIS (1-5) ===
+  - id: "M001"
+    name: "Engine misfire diagnosis"
+    input:
+      type: "voice_note"
+      transcription: "Customer says engine is shaking, check engine light is flashing, smells like gas"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      event_type: "voice_note"
+      diagnosis: "Likely engine misfire — spark plugs, coils, or fuel injectors"
+      steps_contain: ["decode_vin", "create_estimate"]
+      requires_approval: false
+
+  - id: "M002"
+    name: "VIN photo decode"
+    input:
+      type: "vin_photo"
+      ocr_text: "VIN: 2T1BF4FK5CU654321"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      event_type: "vin_photo"
+      vin_decoded: true
+      make: "Toyota"
+
+  - id: "M003"
+    name: "SMS forward with VIN"
+    input:
+      type: "sms_forward"
+      text: "Hey this is John, my truck VIN is 3C6TRVDG5JE123456 needs an oil change"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      event_type: "sms_forward"
+      customer_name_extracted: "John"
+
+  - id: "M004"
+    name: "Unknown VIN — must decode first"
+    input:
+      type: "voice_note"
+      transcription: "I need a brake job"
+      vin: null
+    expected_output:
+      first_step: "decode_vin"
+      requires_vin: true
+
+  - id: "M005"
+    name: "Duplicate event — idempotency"
+    input:
+      type: "voice_note"
+      transcription: "Oil change needed"
+      vin: "1FMCU9GD3LUA12345"
+      idempotency_key: "abc123"
+    expected_output:
+      duplicate_detected: true
+      no_new_event: true
+
+  # === BRAKE JOBS (6-10) ===
+  - id: "M006"
+    name: "Front brake pads and rotors"
+    input:
+      type: "voice_note"
+      transcription: "Front brake pads and rotors, customer hears grinding noise"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      steps_contain: ["create_estimate", "order_parts"]
+      total_range: [400, 800]
+      requires_approval: false
+
+  - id: "M007"
+    name: "Full brake system overhaul"
+    input:
+      type: "voice_note"
+      transcription: "All four corners, pads, rotors, calipers, brake fluid flush"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      total_min: 1500
+      requires_approval: true
+      approval_reason: "exceeds $750 threshold"
+
+  - id: "M008"
+    name: "Brake line replacement"
+    input:
+      type: "voice_note"
+      transcription: "Brake line rusted through, leaking fluid"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      steps_contain: ["create_estimate", "order_parts"]
+      priority: "high"
+
+  - id: "M009"
+    name: "Emergency brake repair"
+    input:
+      type: "voice_note"
+      transcription: "Parking brake cable snapped"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      steps_contain: ["create_estimate"]
+      priority: "high"
+
+  - id: "M010"
+    name: "ABS sensor diagnosis"
+    input:
+      type: "voice_note"
+      transcription: "ABS light on, wheel speed sensor code"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      steps_contain: ["create_estimate", "decode_vin"]
+      diagnosis: "wheel speed sensor"
+
+  # === ENGINE / TRANSMISSION (11-15) ===
+  - id: "M011"
+    name: "Timing belt replacement"
+    input:
+      type: "voice_note"
+      transcription: "Timing belt due at 100K km"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      total_min: 800
+      requires_approval: true
+
+  - id: "M012"
+    name: "Transmission service"
+    input:
+      type: "voice_note"
+      transmission: "Transmission slipping, needs fluid change and filter"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      steps_contain: ["create_estimate"]
+      total_range: [300, 600]
+
+  - id: "M013"
+    name: "Head gasket failure"
+    input:
+      type: "voice_note"
+      transcription: "White smoke from exhaust, overheating, coolant loss"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      total_min: 2000
+      requires_approval: true
+      diagnosis: "head gasket"
+
+  - id: "M014"
+    name: "Oil leak diagnosis"
+    input:
+      type: "voice_note"
+      transcription: "Oil spots in driveway, burning smell"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      steps_contain: ["create_estimate"]
+      diagnosis: "oil leak"
+
+  - id: "M015"
+    name: "Check engine light diagnosis"
+    input:
+      type: "voice_note"
+      transcription: "Check engine light on, code P0301"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      diagnosis: "cylinder 1 misfire"
+      steps_contain: ["create_estimate"]
+
+  # === MAINTENANCE (16-20) ===
+  - id: "M016"
+    name: "Synthetic oil change"
+    input:
+      type: "voice_note"
+      transcription: "Just need an oil change, synthetic"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      total_max: 150
+      requires_approval: false
+
+  - id: "M017"
+    name: "Tire rotation and balance"
+    input:
+      type: "voice_note"
+      transcription: "Rotate and balance all four tires"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      total_max: 100
+      requires_approval: false
+
+  - id: "M018"
+    name: "Winter tire install"
+    input:
+      type: "voice_note"
+      transcription: "Put on winter tires, already have them on rims"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      total_max: 80
+      steps_contain: ["create_estimate"]
+
+  - id: "M019"
+    name: "Air conditioning not cold"
+    input:
+      type: "voice_note"
+      transcription: "AC blowing warm, needs recharge or compressor"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      steps_contain: ["create_estimate"]
+      total_range: [200, 1500]
+
+  - id: "M020"
+    name: "Battery replacement"
+    input:
+      type: "voice_note"
+      transcription: "Car won't start, battery is 5 years old"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      total_range: [200, 400]
+      steps_contain: ["create_estimate", "order_parts"]
+
+  # === CUSTOM PACKAGE (21-25) ===
+  - id: "M021"
+    name: "Custom package — high mileage commuter"
+    input:
+      type: "webhook_in"
+      text: "Build package for 2019 Camry, 120K km, drives 25K km/year"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      package_type: "custom"
+      monthly_price_range: [70, 120]
+
+  - id: "M022"
+    name: "Custom package — low mileage"
+    input:
+      type: "webhook_in"
+      text: "Build package for 2022 F-150, 15K km, drives 8K km/year"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      package_type: "custom"
+      monthly_price_range: [40, 80]
+
+  - id: "M023"
+    name: "Care plan signup — Basic"
+    input:
+      type: "webhook_in"
+      text: "Sign up for Basic Care plan"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      steps_contain: ["create_stripe_subscription"]
+      plan_type: "basic"
+
+  - id: "M024"
+    name: "Care plan signup — Premium"
+    input:
+      type: "webhook_in"
+      text: "Sign up for Premium Care plan, 2 vehicles"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      steps_contain: ["create_stripe_subscription"]
+      plan_type: "premium"
+
+  - id: "M025"
+    name: "Package with trade-in"
+    input:
+      type: "voice_note"
+      transcription: "Want to trade in my 2015 Civic and buy a 2020 RAV4, need maintenance package"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      steps_contain: ["list_vehicle_for_sale", "create_stripe_subscription"]
+
+  # === TRADE-IN / BUY-SELL (26-30) ===
+  - id: "M026"
+    name: "Vehicle appraisal — good condition"
+    input:
+      type: "webhook_in"
+      text: "Appraise 2018 Silverado, 80K km, good condition, asking $28000"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      steps_contain: ["list_vehicle_for_sale"]
+      estimated_value_range: [25000, 32000]
+
+  - id: "M027"
+    name: "Vehicle appraisal — poor condition"
+    input:
+      type: "webhook_in"
+      text: "Appraise 2012 Focus, 200K km, rust, accident history, asking $5000"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      steps_contain: ["list_vehicle_for_sale"]
+      requires_approval: true
+      approval_reason: "below target margin"
+
+  - id: "M028"
+    name: "Vehicle sold notification"
+    input:
+      type: "webhook_in"
+      text: "2018 Silverado sold for $27500"
+      vin: "3C6TRVDG5JE123456"
+    expected_output:
+      event_type: "vehicle_sold"
+      notification_sent: true
+      notification_priority: "P0"
+
+  - id: "M029"
+    name: "Parts order with approval"
+    input:
+      type: "voice_note"
+      transcription: "Need to order engine parts, total around $1200"
+      vin: "2T1BF4FK5CU654321"
+    expected_output:
+      steps_contain: ["order_parts"]
+      requires_approval: true
+      approval_reason: "exceeds $1000 threshold"
+
+  - id: "M030"
+    name: "Estimate approval flow"
+    input:
+      type: "webhook_in"
+      text: "Estimate for $850 sent to customer, waiting for approval"
+      vin: "1FMCU9GD3LUA12345"
+    expected_output:
+      workflow: "estimate_approval"
+      sla_hours: 3
+      escalation_after_minutes: 15
+
+# === SIMULATION REPORT ===
+simulation:
+  iterations: 100
+  metrics:
+    - name: "approval_time_before"
+      description: "Average time from estimate creation to approval (minutes)"
+      target_max: 180
+    - name: "approval_time_after"
+      description: "Average time with escalation workflow (minutes)"
+      target_max: 60
+    - name: "cost_per_ro"
+      description: "Average LLM cost per repair order (USD)"
+      target_max: 0.50
+    - name: "duplicate_rate"
+      description: "Percentage of events that are duplicates"
+      target_max: 0.1
+    - name: "missed_approval_rate"
+      description: "Percentage of approvals that miss SLA"
+      target_max: 2.0
+    - name: "parts_order_idempotency"
+      description: "Percentage of parts orders that are idempotent"
+      target_min: 100.0

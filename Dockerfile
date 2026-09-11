@@ -1,21 +1,14 @@
-# Dockerfile for Next Level Auto Python agentic service
-FROM python:3.11-slim
+# Dockerfile — Python service for Next Level Auto
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
+COPY python-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
-COPY src/ src/
-COPY config/ config/
+COPY python-service/ .
+COPY config.yaml .
 
-# Environment
-ENV PYTHONPATH=/app/src
-ENV PORT=8080
+EXPOSE 8000
 
-EXPOSE 8080
-
-# Run as module so relative imports work
-CMD ["python", "-m", "uvicorn", "src.service.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

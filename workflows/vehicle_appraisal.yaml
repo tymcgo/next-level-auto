@@ -1,0 +1,192 @@
+# Workflow: vehicle_appraisal.yaml
+# Trigger: vehicle_appraised event
+# Policy: Profit calc, photos, list on website, notify on sale
+
+name: vehicle_appraisal
+version: "1.0.0"
+description: "Appraise vehicle, calculate profit margin, list on buy/sell lot, track sale"
+
+trigger:
+  event_type: "vehicle_appraised"
+  condition: "has_photos == true"
+
+state_machine:
+  states:
+    - name: "appraising"
+      initial: true
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "vehicle_appraisal_started"
+            target_type: "vehicle_appraisal"
+
+    - name: "calculating_profit"
+      on_enter:
+        - action: "calculate_profit"
+          params:
+            purchase_price: "{{ event.purchase_price }}"
+            estimated_value: "{{ event.estimated_value }}"
+            reconditioning_cost: "{{ event.reconditioning_cost }}"
+            target_margin_percent: "{{ config.target_margin_percent }}"
+      transitions:
+        - event: "profit_acceptable"
+          target: "pending_listing"
+          guard: "profit_margin >= {{ config.target_margin_percent }}"
+        - event: "profit_low"
+          target: "needs_owner_approval"
+          guard: "profit_margin < {{ config.target_margin_percent }}"
+        - event: "loss_detected"
+          target: "rejected"
+
+    - name: "needs_owner_approval"
+      on_enter:
+        - action: "send_notification"
+          params:
+            channel: "telegram"
+            message: "Vehicle appraisal below target margin — needs approval"
+            priority: "P1"
+      transitions:
+        - event: "approval_granted"
+          target: "pending_listing"
+        - event: "approval_denied"
+          target: "rejected"
+        - event: "timeout"
+          target: "rejected"
+          after: "24 hours"
+
+    - name: "pending_listing"
+      on_enter:
+        - action: "list_vehicle_for_sale"
+          params:
+            vehicle_id: "{{ event.vehicle_id }}"
+            list_price: "{{ transition_data.calculated_list_price }}"
+            description: "{{ event.description }}"
+            photos: "{{ event.photos }}"
+            condition_notes: "{{ event.condition_notes }}"
+        - action: "audit_log"
+          params:
+            action: "vehicle_listed"
+            target_type: "vehicle_appraisal"
+      transitions:
+        - event: "listing_published"
+          target: "listed"
+        - event: "listing_failed"
+          target: "failed"
+
+    - name: "listed"
+      on_enter:
+        - action: "update_vehicle_status"
+          params:
+            status: "for_sale"
+        - action: "notify_website"
+          params:
+            webhook_url: "{{ config.website_webhook }}"
+            event: "vehicle_listed"
+      transitions:
+        - event: "buyer_found"
+          target: "sale_pending"
+        - event: "price_reduction"
+          target: "price_adjusted"
+        - event: "delisted"
+          target: "delisted"
+
+    - name: "price_adjusted"
+      on_enter:
+        - action: "update_listing_price"
+          params:
+            new_price: "{{ event.new_price }}"
+        - action: "audit_log"
+          params:
+            action: "vehicle_price_adjusted"
+            target_type: "vehicle_appraisal"
+      transitions:
+        - event: "buyer_found"
+          target: "sale_pending"
+        - event: "delisted"
+          target: "delisted"
+
+    - name: "sale_pending"
+      on_enter:
+        - action: "update_vehicle_status"
+          params:
+            status: "sale_pending"
+        - action: "create_sale_record"
+          params:
+            vehicle_id: "{{ event.vehicle_id }}"
+            buyer_id: "{{ event.buyer_id }}"
+            sale_price: "{{ event.sale_price }}"
+        - action: "audit_log"
+          params:
+            action: "vehicle_sale_pending"
+            target_type: "vehicle_appraisal"
+      transitions:
+        - event: "sale_completed"
+          target: "sold"
+        - event: "sale_cancelled"
+          target: "listed"
+
+    - name: "sold"
+      final: true
+      on_enter:
+        - action: "update_vehicle_status"
+          params:
+            status: "sold"
+        - action: "finalize_sale"
+          params:
+            final_sale_price: "{{ event.final_sale_price }}"
+        - action: "notify_owner"
+          params:
+            message: "Vehicle sold! Profit: {{ transition_data.profit }}"
+            priority: "P0"
+        - action: "audit_log"
+          params:
+            action: "vehicle_sold"
+            target_type: "vehicle_appraisal"
+
+    - name: "rejected"
+      final: true
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "vehicle_appraisal_rejected"
+            target_type: "vehicle_appraisal"
+
+    - name: "delisted"
+      final: true
+      on_enter:
+        - action: "update_vehicle_status"
+          params:
+            status: "delisted"
+        - action: "audit_log"
+          params:
+            action: "vehicle_delisted"
+            target_type: "vehicle_appraisal"
+
+    - name: "failed"
+      final: true
+      on_enter:
+        - action: "notify_owner"
+          params:
+            message: "Vehicle appraisal process failed"
+            priority: "P0"
+        - action: "audit_log"
+          params:
+            action: "vehicle_appraisal_failed"
+            target_type: "vehicle_appraisal"
+
+required_outcomes:
+  - "Profit calculation completed"
+  - "Vehicle listed (if approved)"
+  - "Audit trail for all decisions"
+
+policy:
+  min_profit_margin_percent: 20
+  auto_reject_below_percent: 10
+  listing_duration_days: 30
+  price_reduction_interval_days: 7
+  require_photos_minimum: 5
+
+sla:
+  appraisal_completion_hours: 48
+  owner_approval_hours: 24
+  listing_publication_minutes: 60

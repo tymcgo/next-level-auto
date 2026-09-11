@@ -1,0 +1,162 @@
+# policies.yaml — Governance policies for Next Level Auto
+# Versioned, auditable, declarative
+
+version: "1.0.0"
+effective_date: "2026-08-25"
+
+# =============================================================================
+# APPROVAL POLICIES
+# =============================================================================
+approval_policies:
+  - name: "estimate_approval"
+    description: "Estimates above threshold require owner approval"
+    threshold: 750.00
+    approver: "tyler"
+    sla_hours: 3
+    escalation:
+      interval_minutes: 15
+      max_escalations: 3
+      channels: ["telegram", "sms"]
+    auto_deny_after_escalations: false
+
+  - name: "parts_order_approval"
+    description: "Parts orders above threshold require approval"
+    threshold: 1000.00
+    approver: "tyler"
+    sla_hours: 4
+    escalation:
+      interval_minutes: 30
+      max_escalations: 2
+      channels: ["telegram"]
+
+  - name: "vehicle_listing_approval"
+    description: "Vehicle listings below target margin require approval"
+    threshold: 0
+    approver: "tyler"
+    sla_hours: 24
+    escalation:
+      interval_minutes: 60
+      max_escalations: 1
+      channels: ["telegram"]
+
+# =============================================================================
+# NOTIFICATION POLICIES (Tiered)
+# =============================================================================
+notification_policies:
+  - tier: "P0"
+    description: "Critical — immediate action required"
+    channels: ["telegram"]
+    immediate: true
+    events:
+      - "approval_escalation"
+      - "parts_order_failed"
+      - "vehicle_sold"
+      - "payment_failed"
+      - "system_error"
+      - "dlq_alert"
+
+  - tier: "P1"
+    description: "Important — action needed within SLA"
+    channels: ["slack", "telegram"]
+    immediate: true
+    events:
+      - "estimate_pending_approval"
+      - "parts_delivery_delayed"
+      - "vehicle_appraisal_low_margin"
+      - "subscription_payment_failed"
+      - "customer_complaint"
+
+  - tier: "P2"
+    description: "Informational — daily summary"
+    channels: ["telegram"]
+    immediate: false
+    schedule: "0 8,16 * * *"
+    events:
+      - "open_ro_count"
+      - "parts_waiting_count"
+      - "mrr_summary"
+      - "vehicles_for_sale"
+      - "pending_approvals"
+      - "daily_reconciliation_status"
+
+# =============================================================================
+# DATA RETENTION POLICIES
+# =============================================================================
+retention_policies:
+  - table: "events"
+    retention_days: 365
+    archive_after_days: 90
+    archive_location: "s3://nextlevelauto-archive/events/"
+
+  - table: "audit_log"
+    retention_days: 2555
+    archive_after_days: 365
+
+  - table: "outbox"
+    retention_days: 30
+    delete_after_publish: true
+
+# =============================================================================
+# SECURITY POLICIES
+# =============================================================================
+security_policies:
+  - name: "prompt_firewall"
+    description: "Strip override instructions from all user inputs"
+    enabled: true
+    action: "sanitize_and_log"
+
+  - name: "secret_injection"
+    description: "Secrets from environment only, never hardcoded"
+    enabled: true
+    source: "env"
+
+  - name: "idempotency_enforcement"
+    description: "All mutating operations must be idempotent"
+    enabled: true
+    key_format: "sha256(vin+timestamp+raw)"
+
+  - name: "test_mode_sms_prefix"
+    description: "Prefix all SMS with [TEST] in test mode"
+    enabled: true
+    prefix: "[TEST] "
+
+# =============================================================================
+# COST CONTROLS
+# =============================================================================
+cost_controls:
+  - name: "planner_token_limit"
+    description: "Max tokens for planner agent output"
+    limit: 1200
+    action: "truncate_and_warn"
+
+  - name: "daily_llm_budget"
+    description: "Max daily LLM cost in USD"
+    limit: 5.00
+    action: "pause_and_alert"
+
+  - name: "retry_budget"
+    description: "Max retries per event"
+    limit: 5
+    action: "dlq"
+
+# =============================================================================
+# SLA POLICIES
+# =============================================================================
+sla_policies:
+  - name: "approval_response"
+    description: "Time to respond to approval request"
+    target_minutes: 180
+    warning_at_minutes: 120
+    breach_action: "escalate"
+
+  - name: "parts_delivery"
+    description: "Time from order to delivery"
+    target_hours: 72
+    warning_at_minutes: 48
+    breach_action: "notify_owner"
+
+  - name: "estimate_response"
+    description: "Time from customer request to estimate sent"
+    target_minutes: 30
+    warning_at_minutes: 20
+    breach_action: "alert"

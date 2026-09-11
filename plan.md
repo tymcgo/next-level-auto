@@ -1,71 +1,59 @@
-# Plan — Next Level Auto Agentic Business OS
-
-Updated: 2026-09-11
+# Plan — Next Level Auto (Custom Agentic Tekmetric)
+Updated: 2026-08-25
 
 ## Goal
-Build a fully agentic business operating system for an automotive repair shop (diagnosis, repair, buy/sell, online premium service contracts) with zero friction for the owner — owner supplies a CSV of ROs and 3 API keys; the system infers, builds, deploys, and validates everything else.
+Build a fully agentic shop management system that replaces Tekmetric for Next Level Auto: auto repair shop handling diagnosis, maintenance, repair, buy/sell vehicles, online premium service contracts, and custom maintenance package builders. Kill all 29 failure modes.
 
-## Stack
-- **Supabase** — Postgres + Auth + Storage + Realtime (data plane)
-- **Cloudflare Workers** — serverless API edge (compute plane)
-- **LiteLLM** — LLM routing / cost control (intelligence plane)
-- **YAML config** — ALL behavior is config, no hard-coded business logic
+## Architecture
+**Cloud-native, zero local compute.** ThinkPad W540 only needs a browser.
+- Telegram → Cloudflare Worker (serverless) → OpenRouter free LLM → Supabase Cloud (free tier) → Vercel dashboard (free tier)
 
 ## Milestones
-- [x] M1 — Governing docs + architecture spec
-- [x] M2 — Domain model + interface contracts
-- [x] M3 — Supabase schema + migrations
-- [x] M4 — Cloudflare Worker API
-- [x] M5 — Agent runtime (planner/executor split, scoped memory)
-- [x] M6 — Failure mode coverage (29 modes)
-- [x] M7 — CSV intake pipeline
-- [x] M8 — Online premium service contracts
-- [x] M9 — Buy/sell module
-- [x] M10 — Observability (audit log, health checks)
-- [x] M11 — End-to-end validation against sample CSV
-- [x] M12 — Production deploy (all blockers cleared)
+- [x] M1 — Canonical Schema + DB schema + events table + idempotency ✅
+- [x] M2 — Cloudflare Worker Telegram webhook + Whisper/VIN/OCR normalization ✅
+- [x] M3 — Planner Agent (1200-token JSON output) + tool_gateway.ts (8 tools, Zod, secret injection, prompt firewall) ✅
+- [x] M4 — YAML workflows (estimate_approval, parts_order, subscription_signup, vehicle_appraisal) ✅
+- [x] M5 — Governance: policies.yaml, approvals, escalation, tiered notifications ✅
+- [x] M6 — Next.js Dashboard (8 pages): RO Kanban, Estimate builder, Inventory, Buy/Sell, MRR, Credits, Audit, Build Package ✅
+- [x] M7 — Online services: /build-package (5-question form), /care-plans (3 premium), Stripe Checkout ✅
+- [x] M8 — Observability: cost_tracker, reconciler, verification worker ✅
+- [x] M9 — Eval suite: 30 shop Moments + simulation report ✅
+- [x] M10 — Deliverables: docker-compose, .env.example, README, CI/CD, setup scripts ✅
 
-## Live URLs
+## Current Step
+ALL MILESTONES COMPLETE. Full system scaffolded. Awaiting Python service from nla-agentic-builder for integration.
 
-| Service | URL |
-|---|---|
-| Cloudflare Worker | https://next-level-auto-gateway.tylersautoregina.workers.dev |
-| Health Check | https://next-level-auto-gateway.tylersautoregina.workers.dev/health |
-| Telegram Webhook | https://next-level-auto-gateway.tylersautoregina.workers.dev/telegram-webhook |
-| Telegram Bot | @NextLevelMomentsBot (token in `.env`) |
-| Supabase Dashboard | https://hjgjhfxjrxxlxitjmqjs.supabase.co |
+## Deliverables Built
+| File | Purpose |
+|------|---------|
+| `schemas/v1.json` | JSON Schema for NextLevelEvent |
+| `src/models/event.py` | Pydantic v2 canonical event |
+| `src/models/plan.py` | PlanSchema for Planner Agent |
+| `db/schema.sql` | Postgres tables, queues, indexes, triggers |
+| `db/functions.sql` | Supabase stored procedures |
+| `src/workers/telegram-webhook.ts` | Cloudflare Worker Telegram webhook |
+| `src/workers/workflow-state.ts` | Durable Object for workflow state |
+| `src/workers/verification_worker.ts` | SLA verification, DLQ, escalation |
+| `src/workers/dashboard-api.ts` | Cloudflare Worker dashboard API |
+| `src/gateway/tool_gateway.ts` | 8-tool gateway with Zod, prompt firewall |
+| `python-service/` | FastAPI + PlannerAgent + ToolRegistry + GovernanceEngine |
+| `workflows/*.yaml` | 4 YAML state machine workflows |
+| `governance/policies.yaml` | Approval, notification, retention policies |
+| `dashboard/` | Next.js 14 with 8 pages |
+| `eval/moments.yaml` | 30 shop Moments + simulation config |
+| `config.yaml` | Shop config (cloud-native LLM, plans, suppliers) |
+| `.env.example` | Environment template |
+| `docker-compose.yml` | Optional local Supabase |
+| `wrangler.toml` | Cloudflare Worker config |
+| `setup.sh` / `setup.bat` | One-time setup scripts |
+| `.github/workflows/ci.yml` | CI/CD pipeline |
+| `README.md` | Full documentation + kill matrix |
 
-## What's Built (30+ files, ~3,500 LOC)
-
-| Component | File | Tests |
-|---|---|---|
-| Pydantic schemas | `src/schemas/__init__.py` | 62 passing |
-| Discovery pipeline | `src/discovery/__init__.py` | ✅ validated |
-| Interview module | `src/interview/__init__.py` | - |
-| Telegram bot | `src/telegram/__init__.py` | - |
-| Planner agent | `src/agent/__init__.py` | - |
-| Tool registry + gateway | `src/tools/__init__.py` | - |
-| Subscription manager | `src/subscription/__init__.py` | - |
-| Buy/sell manager | `src/buy_sell/__init__.py` | - |
-| Governance engine | `src/governance/__init__.py` | - |
-| CF Workers gateway | `src/workers/tool_gateway.ts` | - |
-| Verification worker | `src/workers/verification_worker.ts` | - |
-| DLQ worker | `src/workers/dlq_worker.ts` | - |
-| Supabase migrations | `supabase/migrations/001_init.sql` | - |
-| Config YAML | `config/config.yaml`, `config/policies.yaml` | - |
-| Sample CSV | `sample_ro_history.csv` | - |
-| Simulation harness | `src/simulate.py` | - |
-| Tests | `tests/test_schemas.py`, `tests/test_core.py` | 62/62 green |
-| README | `README.md` | 29 failure modes |
-
-## What's Blocked
-
-| Item | What's Needed |
-|---|---|
-| Production deploy | Cloudflare API token + account ID |
-| Supabase provisioning | Supabase service key (anon key in `.env`) |
-| Telegram bot live | Bot token from @BotFather |
+## Integration with nla-agentic-builder
+- Message sent with updated scope (no local LLM, use OpenRouter)
+- Python service (`python-service/`) built as integration point
+- Endpoints: `/plan`, `/execute`, `/govern`
+- CF Worker POSTs to Python for plan/govern, direct calls for tools
 
 ## Change Log
-- 2026-09-11 — created
-- 2026-09-11 — M1-M11 complete. All 62 tests passing. Schema perfected. Committed.
+- 2026-08-25 — created, all milestones built, cloud-native pivot for ThinkPad W540

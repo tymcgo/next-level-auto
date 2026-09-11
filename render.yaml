@@ -1,0 +1,32 @@
+# render.yaml — Render.com deployment config for Python service
+# Deploy: connect GitHub repo on render.yaml, or push manually
+
+services:
+  - type: web
+    name: nla-agent
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r python-service/requirements.txt
+    startCommand: cd python-service && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: TEST_MODE
+        value: "true"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ADMIN_CHAT_ID
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true

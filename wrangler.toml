@@ -1,0 +1,43 @@
+# wrangler.toml — Cloudflare Worker config
+# Deploy: npx wrangler deploy src/workers/telegram-webhook.ts
+
+name = "nla-telegram-webhook"
+main = "src/workers/telegram-webhook.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables (set via wrangler secret put)
+[vars]
+TEST_MODE = "true"
+
+# Secrets (set via: wrangler secret put TELEGRAM_BOT_TOKEN)
+# TELEGRAM_BOT_TOKEN = ""
+# TELEGRAM_WEBHOOK_SECRET = ""
+# SUPABASE_URL = ""
+# SUPABASE_SERVICE_KEY = ""
+# OPENROUTER_API_KEY = ""
+
+# Routes (uncomment when custom domain is set)
+# routes = [
+#   { pattern = "nla-telegram.yourdomain.com", custom_domain = true }
+# ]
+
+# Cron triggers (for reconciler, escalation)
+[triggers]
+crons = [
+  "*/15 * * * *",  # Escalation check every 15 min
+  "0 2 * * *",     # Nightly reconciler at 2am CST
+  "0 8,16 * * *"   # Daily digest at 8am and 4pm CST
+]
+
+# KV (for idempotency cache)
+[[kv_namespaces]]
+binding = "IDEMPOTENCY_KV"
+id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+preview_id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Durable Objects (for workflow state)
+[[durable_objects.bindings]]
+name = "WORKFLOW_STATE"
+class_name = "WorkflowState"
+script_name = "workflow-state"

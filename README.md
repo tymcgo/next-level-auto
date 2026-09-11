@@ -1,227 +1,203 @@
-# Next Level Auto — Agentic Business OS
+# Next Level Auto — Custom Agentic Shop Management
 
-Fully agentic business operating system for automotive repair shops.
-**Owner provides CSV + 3 keys. System does the rest.**
-
-## Status: M1-M11 Complete | M12 Blocked on Cloudflare Token
-
-## Quick Start
-
-```bash
-# 1. Clone + install
-git clone <repo> && cd NextLevelAuto
-pip install -e .
-npm install  # for Workers
-
-# 2. Configure
-cp .env.example .env  # fill in keys
-
-# 3. Deploy Workers
-cd src/workers && wrangler deploy
-
-# 4. Run simulation
-python src/simulate.py ro_history.csv simulation_report.json
-```
+**Tekmetric replacement.** Fully agentic. $0 to build and validate. Runs on free cloud tiers — your ThinkPad only needs a browser.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Telegram Bot (@NextLevelMomentsBot)    │
-│          voice → Whisper → structured Moment             │
-│          VIN photo → OCR → structured Moment             │
-│          forwarded SMS → parse → structured Moment       │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Planner Agent (LLM)                    │
-│   System prompt: You are Next Level Auto estimator       │
-│   Input: Moment + last 2 ROs + config.yaml               │
-│   Output: Plan [{tool, args}] ≤ 1200 tokens              │
-│   Scoped memory ONLY — no history beyond last 2 ROs      │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│            Cloudflare Workers — Tool Gateway             │
-│   Zod validation → sanitize → idempotency → circuit br.  │
-│   8 tools: decode_vin, create_ro, create_estimate,       │
-│   send_sms, order_parts, create_stripe_subscription,     │
-│   update_website_inventory, audit_log                     │
-└─────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│              Supabase (Postgres + Auth + RLS)            │
-│   moments, processed_moments, outbox, failed_moments,    │
-│   customer_credits, vehicle_appraisals, audit_log        │
-└─────────────────────────────────────────────────────────┘
+Telegram → Cloudflare Worker (serverless)
+              ↓
+         LLM Extraction (OpenRouter free models)
+              ↓
+         Supabase Cloud (Postgres + Auth, free tier)
+              ↓
+         Next.js Dashboard (Vercel free tier)
 ```
 
-## The 8 Moment Types
+## Free Tiers Used
 
-| Key | Description | Auto-Approve |
-|---|---|---|
-| `diagnosis` | Initial concern, test drive, DTC scan | Below threshold |
-| `repair` | Labor + parts to fix diagnosed issue | Below threshold |
-| `estimate` | Written quote before authorization | Below threshold |
-| `maintenance` | Oil, tires, brakes on schedule | Below threshold |
-| `subscription_signup` | Customer enrolls in monthly plan | Always |
-| `subscription_renewal` | Auto-renew monthly plan | Always |
-| `vehicle_appraisal` | Shop buying a vehicle | Below threshold |
-| `vehicle_listing` | Shop listing for sale | Always |
+| Service | Free Tier | What We Use It For |
+|---------|-----------|-------------------|
+| **OpenRouter** | Free tier models (Gemma, Llama, Mistral) | Planner Agent LLM |
+| **Supabase** | 500DB, 2M requests/month | DB, Auth, Queue |
+| **Cloudflare Workers** | 100K req/day, 10M req/month | Telegram webhook, API |
+| **Vercel** | 100GB bandwidth | Next.js dashboard |
+| **Telegram Bot** | Free forever | Tech input, notifications |
+| **Stripe Test Mode** | Free | Payment testing |
+| **NHTSA VIN API** | Free public API | VIN decode |
+| **GitHub** | Free | Repo, Actions CI |
 
-## The 8 Tools
+**Total cost: $0/mo.** Only pay when you go live with real traffic.
 
-| Tool | Purpose | Idempotent |
-|---|---|---|
-| `decode_vin` | NHTSA free VIN decoder | ✅ |
-| `create_ro` | Create RO in shop system | ✅ |
-| `create_estimate` | Create written estimate | ✅ |
-| `send_sms` | Twilio SMS to customer | ✅ |
-| `order_parts` | Email parts order to supplier | ✅ |
-| `create_stripe_subscription` | Stripe care plan subscription | ✅ |
-| `update_website_inventory` | Webhook to website | ✅ |
-| `audit_log` | Append-only audit trail | ✅ |
+## Quick Start
 
-## Schema (Perfected — 62 Tests)
-
-The canonical schema `NextLevelMoment` is the single source of truth:
-
-```python
-class NextLevelMoment(BaseModel):
-    idempotency_key: str   # `mom_` + sha256(vin+timestamp+raw) — globally unique
-    vin: str               # 11-17 chars, ISO 3779 (no I/O/Q), check digit WARNING not rejection
-    mileage: Optional[int] # 0-2M miles
-    dtcs: list[str]        # SAE J2012 format [PBCU][0-9A-F]{4}
-    diag: Optional[str]    # Technician notes (max 2000 chars)
-    parts: list[PartLine]  # Part number, description, qty, unit_cost_cents
-    labor_hours: float     # 0-999.9
-    labor_rate_cents: int  # Shop rate in cents/hour
-    estimate_total_cents: int  # Auto-computed: labor + parts
-    approval_status: ApprovalStatus  # pending → approved | rejected | escalated
-    subscription_plan: Optional[str] # Care plan name
-    moment_type: MomentType          # 8 canonical types
-    raw: Optional[str]               # Original input (max 10KB)
-    created_at: datetime             # Timezone-aware UTC
-```
-
-**Key Design Decisions:**
-- **Money is always integer cents** — never float (prevents rounding errors)
-- **VIN check digit is WARNING not rejection** — shop VIN entry is error-prone; we log but allow through
-- **Idempotency key = `mom_` + sha256** — `mom_` prefix for quick identification, sha256 for collision resistance, separator bytes prevent concatenation attacks
-- **Approval state machine**: pending → approved | rejected | escalated (no backward transitions)
-- **Scoped memory**: CustomerContext = last 2 ROs only — planner never sees full history
-
-## 29 Failure Modes — Coverage Matrix
-
-| # | Failure Mode | Where Handled | Mechanism |
-|---|---|---|---|
-| 1 | **Idempotency keys** | `src/schemas/` + `tool_gateway.ts` | `mom_` + sha256, UNIQUE constraint + pre-check |
-| 2 | **Transactional outbox** | `supabase/migrations` + gateway | `outbox` table, write result on success |
-| 3 | **Dead Letter Queue** | `supabase/migrations` + `dlq_worker.ts` | `failed_moments` table, retry up to 3x |
-| 4 | **Circuit breaker** | `tool_gateway.ts` | 5 failures/30s → open, 60s cooldown |
-| 5 | **Audit log** | `supabase/migrations` + `audit_log` tool | Append-only `audit_log` table |
-| 6 | **Schema registry** | `src/schemas/__init__.py` | Pydantic v2 canonical schema |
-| 7 | **Scoped memory** | `src/agent/__init__.py` | CustomerContext = last 2 ROs ONLY |
-| 8 | **Planner/Executor split** | `src/agent/` + `src/tools/` | Planner outputs Plan JSON, Executor runs steps |
-| 9 | **Prompt injection filter** | `src/tools/` + `tool_gateway.ts` | Regex patterns reject malicious input |
-| 10 | **Exponential backoff** | `tool_gateway.ts` | 200ms base, 5x multiplier |
-| 11 | **Jitter** | `tool_gateway.ts` | Random jitter added to backoff |
-| 12 | **Partition by VIN** | `supabase/migrations` | Index on `moments.vin` |
-| 13 | **SMS test mode** | `src/tools/` | `[TEST - approve in Telegram]` prefix |
-| 14 | **Kill switch** | Telegram `/stop` | Bot polling stops, Workers reject new work |
-| 15 | **Verification worker** | `verification_worker.ts` | Cron every 5 min checks outbox |
-| 16 | **Approval timeout escalation** | `src/governance/` | SLA 3h → auto-escalation SMS |
-| 17 | **Subscription idempotency** | `src/subscription/` | Stripe `Idempotency-Key` header |
-| 18 | **Buy/sell approval gate** | `src/buy_sell/` | `max_appraisal_cents` cap |
-| 19 | **Inventory reconciliation** | `update_website_inventory` tool | Webhook + outbox tracking |
-| 20 | **Schema validation** | Pydantic v2 + Zod | Input validated at boundary |
-| 21 | **RLS** | `supabase/migrations` | All tables have RLS |
-| 22 | **Required outcome verification** | `verification_worker.ts` | Checks `create_ro` returns `ro_id` |
-| 23 | **DLQ manual retry** | `dlq_worker.ts` | POST to `/dlq/retry` |
-| 24 | **Secret isolation** | `src/tools/` + `.env.example` | Secrets from env ONLY |
-| 25 | **Input sanitization** | `src/tools/` | All string args sanitized |
-| 26 | **Tool registry** | `src/tools/` | Explicit registration |
-| 27 | **Config-driven behavior** | `config/config.yaml` | Business rules in YAML |
-| 28 | **Typed errors** | All modules | Structured error responses |
-| 29 | **Health checks** | `tool_gateway.ts` | `GET /health` |
-
-## Interview (10 Questions → config.yaml)
-
-The system asks the owner via Telegram or CLI:
-
-1. Hourly labor rate (e.g., $150/hr)
-2. BASIC care plan name + price + benefits
-3. PLUS care plan name + price + benefits
-4. PREMIUM care plan name + price + benefits
-5. Preferred parts supplier email
-6. Approval threshold in dollars
-7. SMS sender name
-
-Answers written to `config/config.yaml` — no manual YAML editing.
-
-## Simulation Mode
+### 1. Get Free API Keys
 
 ```bash
-python src/simulate.py ro_history.csv report.json
+# Sign up for free accounts:
+# 1. OpenRouter: https://openrouter.ai (get API key)
+# 2. Supabase: https://supabase.com (create free project)
+# 3. Telegram: @BotFather → /newbot (get bot token)
+# 4. Vercel: https://vercel.com (auto-deploy from GitHub)
+# 5. Cloudflare: https://dash.cloudflare.com ( Workers & Pages)
 ```
 
-Output: approval time before/after, tokens per RO, cost, error count.
-All SMS prefixed with `[TEST - approve in Telegram]`.
+### 2. Clone and Configure
 
-## Supabase Tables
+```bash
+git clone https://github.com/tymcgo/next-level-auto.git
+cd next-level-auto
+cp .env.example .env
+# Fill in your free API keys
+```
 
-| Table | Purpose |
-|---|---|
-| `moments` | Canonical moment records |
-| `processed_moments` | Idempotency tracking |
-| `outbox` | Transactional outbox |
-| `failed_moments` | Dead letter queue |
-| `customer_credits` | Subscription credits |
-| `vehicle_appraisals` | Buy/sell records |
-| `audit_log` | Append-only audit trail |
+### 3. Deploy (no local servers needed)
+
+```bash
+# Deploy Cloudflare Worker (Telegram webhook)
+npx wrangler deploy src/workers/telegram-webhook.ts
+
+# Deploy Next.js dashboard to Vercel
+vercel --prod
+
+# Set Telegram webhook URL
+curl -F "url=https://nla-telegram.your-subdomain.workers.dev" \
+     https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+```
+
+### 4. Go
+
+- Open your Vercel dashboard URL
+- Send a voice note or VIN photo to your Telegram bot
+- Watch events flow in real-time
+
+## The 29-Failure Kill Matrix
+
+Every failure mode from the original spec has a concrete mitigation built into the architecture:
+
+| # | Failure | Mitigation |
+|---|---------|-----------|
+| 1 | Workarounds break | Declarative YAML workflows in `/workflows/` |
+| 2 | Customizations break | Schema registry `/schemas/v1.json`, versioned events |
+| 3 | Unexpected behaviors | Circuit breakers on all external calls |
+| 4 | Context contamination | 1200 token output cap, scoped memory per VIN |
+| 5 | Hallucinations | Zod validation, 8-tool allowlist, prompt firewall |
+| 6 | Siloed info | Single events table, customer + last 2 ROs injected |
+| 7 | Tech errors | Idempotency keys, exponential backoff + jitter, DLQ |
+| 8 | Approval bottlenecks | Tiered approval >$750 → Tyler, 3h SLA escalation |
+| 9 | Missed tool calls | Required outcomes + verification worker |
+| 10 | Missed approvals | Escalation job every 15 min |
+| 11 | No timely notifications | P0 Telegram immediate, P1 Slack, P2 daily digest |
+| 12 | No governance | `policies.yaml`, `audit_log` append-only |
+| 13 | Tool sprawl | Exactly 8 tools via gateway allowlist |
+| 14 | Version drift | `schema_version` on all events, registry file |
+| 15 | Race conditions | Idempotency keys, DB unique constraints |
+| 16 | Silent failures | Verification worker, DLQ, transactional outbox |
+| 17 | Retry storms | Backoff 200ms/1s/5s + jitter, max 5 retries |
+| 18 | Security/injection | Prompt firewall strips overrides, Zod validation |
+| 19 | Cost overruns | `cost_tokens` per event, $5/day budget cap |
+| 20 | Inconsistent model behavior | PlanSchema JSON enforced, no free-text |
+| 21 | No audit trail | `audit_log` append-only, OpenTelemetry traces |
+| 22 | Brittle glue code | YAML state machines, declarative workflows |
+| 23 | Manual reconciliation | Nightly reconciler (events vs Stripe vs shop) |
+| 24 | Alert fatigue | Tiered notifications, batched P2 digest |
+| 25 | SPOF | Stateless serverless functions, managed Supabase |
+| 26 | Scope creep | `scope.md` enforced, features require inclusion |
+| 27 | Vendor lock-in | Replaceable: Supabase→Postgres, CF→any Workers, LiteLLM→any LLM |
+| 28 | Inconsistent schemas | Pydantic v2 + Zod + schema registry |
+
+## Project Structure
+
+```
+next-level-auto/
+├── .env.example          # Environment template
+├── config.yaml           # Shop config (labor, plans, suppliers)
+├── plan.md               # Implementation plan + milestones
+├── strategy.md           # Why this architecture
+├── scope.md              # In/out of scope
+├── architecture.md       # System design + kill matrix
+├── schemas/
+│   └── v1.json           # JSON Schema for NextLevelEvent
+├── db/
+│   └── schema.sql        # Postgres tables, queues, indexes
+├── src/
+│   ├── models/
+│   │   ├── event.py      # Pydantic v2 NextLevelEvent
+│   │   └── plan.py       # Pydantic PlanSchema
+│   ├── workers/
+│   │   └── telegram-webhook.ts  # Cloudflare Worker
+│   ├── gateway/
+│   │   └── tool_gateway.ts      # 8-tool gateway
+│   ├── planner/
+│   │   └── agent.yaml            # Planner Agent config
+│   └── observability/
+│       ├── cost_tracker.ts       # Token cost tracking
+│       └── reconciler.ts         # Nightly reconciliation
+├── workflows/
+│   ├── estimate_approval.yaml
+│   ├── parts_order.yaml
+│   ├── subscription_signup.yaml
+│   └── vehicle_appraisal.yaml
+├── governance/
+│   └── policies.yaml     # Approval, notification, retention policies
+├── eval/
+│   └── moments.yaml      # 30 shop Moments for validation
+└── dashboard/            # Next.js 14 dashboard
+    ├── app/
+    │   ├── page.tsx         # Dashboard home
+    │   ├── ro/page.tsx      # RO Kanban
+    │   ├── estimates/       # Estimate builder (voice→draft)
+    │   ├── inventory/       # Parts tracking
+    │   ├── lot/             # Buy/Sell lot
+    │   ├── subscriptions/   # MRR tracking
+    │   ├── credits/         # Customer credits
+    │   ├── build-package/   # 5-question form
+    │   └── care-plans/      # Premium contracts
+    └── components/
+        └── Sidebar.tsx
+```
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Data | Supabase (Postgres + Auth + RLS) |
-| Compute | Cloudflare Workers |
-| Intelligence | LiteLLM (provider-agnostic LLM routing) |
-| Capture | Telegram Bot API |
-| Language | Python 3.11 + TypeScript |
-| Validation | Pydantic v2 + Zod |
-| Config | YAML (no hard-coded business logic) |
+| Layer | Tech | Why |
+|-------|------|-----|
+| LLM | OpenRouter free models | $0, no local compute needed |
+| Backend | Cloudflare Workers | Serverless, $5/mo, 100K req/day free |
+| DB | Supabase (Postgres + Auth) | Free tier 500MB, managed |
+| Frontend | Next.js + Vercel | Free tier, zero-config deploy |
+| Voice | Whisper via OpenRouter | No local install |
+| OCR | OpenRouter vision models | No local install |
+| Messaging | Telegram Bot | Free forever |
+| Payments | Stripe (test mode) | Free testing |
+| VIN Decode | NHTSA public API | Free |
+| Monitoring | Cloudflare Workers telemetry + Supabase logs | Built-in |
 
-## Deliverables Checklist
+## Running in TEST Mode
 
-- [x] Git repo with full source (24 files)
-- [x] `.env.example` with 20 documented env vars
-- [x] README with failure mode matrix (this file)
-- [x] 62 tests passing (schema, discovery, validation)
-- [x] Discovery pipeline validated (10 moments from sample CSV)
-- [x] Config-driven YAML (moment types, plans, policies)
-- [x] Cloudflare Workers gateway (idempotency, circuit breaker, DLQ)
-- [x] Telegram bot (voice/VIN/SMS capture)
-- [x] Subscription flow (Stripe + customer credits)
-- [x] Buy/sell flow (appraisal + website webhook)
-- [ ] Live Telegram bot link (needs bot token from @BotFather)
-- [ ] Dashboard URL for audit log (needs Supabase Studio access)
-- [ ] Production deploy (needs Cloudflare API token + Supabase service key)
+Default configuration:
+- All SMS prefixed with `[TEST]`
+- Stripe in test mode (no real charges)
+- Cloudflare in dev mode
+- LLM uses free OpenRouter models
+- No real external calls unless explicitly enabled
 
-## What's Blocked
+## Going Live (Future)
 
-| Item | What's Needed |
-|---|---|
-| Production deploy | Cloudflare API token + account ID |
-| Supabase provisioning | Supabase service key (anon key in `.env`) |
-| Telegram bot live | Bot token from @BotFather |
-| Shopify AI Toolkit | Private repo access (non-critical) |
+When you're ready to go from $0 to production:
 
-## Config Files
+1. **Supabase**: Upgrade to Pro ($25/mo) for more storage/bandwidth
+2. **LLM**: Switch to paid model (GPT-4o-mini or Claude Haiku) for better accuracy
+3. **Stripe**: Flip to live mode (real charges)
+4. **Vercel**: Pro ($20/mo) for custom domain + analytics
+5. **Cloudflare**: $5/mo for 10M req
+6. **Twilio**: For real SMS notifications
 
-- `config/config.yaml` — moment types, plans, execution tuning
-- `config/policies.yaml` — approval thresholds, failure mode toggles
-- `.env` — secrets (never committed)
+**Estimated production cost: $50-75/mo** — within spec.
+
+## License
+
+MIT — use freely, modify freely.
+
+---
+
+**Next Level Auto: Agentic shop management. Zero compute required.**
