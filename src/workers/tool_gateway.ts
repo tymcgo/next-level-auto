@@ -38,6 +38,7 @@ type Env = {
   LLM_API_BASE: string;
   LLM_API_KEY: string;
   LLM_MODEL: string;
+  AGENT_SERVICE_URL: string;
 };
 
 // ---------- Prompt injection filter ----------
@@ -324,7 +325,6 @@ app.post('/telegram-webhook', async (c) => {
     const chatId = update.callback_query.message?.chat?.id;
     if (data?.startsWith('approve:yes:')) {
       const vin = data.split(':')[2];
-      // Log approval to audit_log
       await fetch(`${env.SUPABASE_URL}/rest/v1/audit_log`, {
         method: 'POST',
         headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
@@ -389,10 +389,33 @@ app.post('/telegram-webhook', async (c) => {
         body: JSON.stringify({ chat_id: chatId, text: `🎤 Transcribed: ${transcript}\n⏳ Extracting structured data...` }),
       });
       const moment = await extractMomentFromText(env, transcript);
-      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: `📝 Extracted Moment:\n${JSON.stringify(moment, null, 2)}` }),
-      });
+      // Send to Python agentic service for planning
+      const agentUrl = env.AGENT_SERVICE_URL;
+      if (agentUrl) {
+        const agentResponse = await fetch(`${agentUrl}/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ moment, context: { customer_id: 'telegram-' + chatId, vin: moment.vin || '' }, threshold_cents: 50000 }),
+        });
+        const result = await agentResponse.json();
+        if (result.status === 'needs_approval') {
+          const estimateDollars = ((result.governance?.estimate_cents || 0) / 100).toFixed(2);
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: `📋 Plan created. Estimate: $${estimateDollars}\n⏳ Waiting for owner approval...` }),
+          });
+        } else {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: `📋 Plan created and executing:\n${JSON.stringify(result.plan, null, 2)}` }),
+          });
+        }
+      } else {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: `📝 Extracted Moment:\n${JSON.stringify(moment, null, 2)}` }),
+        });
+      }
     } catch (e: any) {
       await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -430,10 +453,33 @@ app.post('/telegram-webhook', async (c) => {
   if (text) {
     try {
       const moment = await extractMomentFromText(env, text);
-      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: `📨 Extracted Moment:\n${JSON.stringify(moment, null, 2)}` }),
-      });
+      // Send to Python agentic service
+      const agentUrl = env.AGENT_SERVICE_URL;
+      if (agentUrl) {
+        const agentResponse = await fetch(`${agentUrl}/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ moment, context: { customer_id: 'telegram-' + chatId, vin: moment.vin || '' }, threshold_cents: 50000 }),
+        });
+        const result = await agentResponse.json();
+        if (result.status === 'needs_approval') {
+          const estimateDollars = ((result.governance?.estimate_cents || 0) / 100).toFixed(2);
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: `📋 Plan created. Estimate: $${estimateDollars}\n⏳ Waiting for owner approval...` }),
+          });
+        } else {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: `📋 Plan created and executing:\n${JSON.stringify(result.plan, null, 2)}` }),
+          });
+        }
+      } else {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: `📨 Extracted Moment:\n${JSON.stringify(moment, null, 2)}` }),
+        });
+      }
     } catch (e: any) {
       await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

@@ -20,3 +20,5 @@ crons = ["*/5 * * * *"]
 # TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_ID
 # SHOP_API_BASE, SHOP_API_KEY
 # WEBSITE_WEBHOOK_URL
+# LLM_API_BASE, LLM_API_KEY, LLM_MODEL
+# AGENT_SERVICE_URL (Python service, e.g. https://nla-agentic.fly.dev)
