@@ -1,72 +1,91 @@
 name: next-level-auto
 stages:
-  - capture
-  - plan
-  - approve
-  - execute
-  - verify
-  - close
-
-# 8 canonical moment types — inferred from RO history
+- capture
+- plan
+- approve
+- execute
+- verify
+- close
 moments:
-  - key: diagnosis
-    label: Diagnosis & Inspection
-    description: Initial concern, test drive, DTC scan, visual inspection
-    auto_approve_below: 0
-    requires_approval_above: 0
-
-  - key: repair
-    label: Repair / Service
-    description: Labor + parts to fix diagnosed issue
-    auto_approve_below: 0
-    requires_approval_above: 0
-
-  - key: estimate
-    label: Estimate / Quote
-    description: Written quote before authorization
-    auto_approve_below: 0
-    requires_approval_above: 0
-
-  - key: maintenance
-    label: Scheduled Maintenance
-    description: Oil, tires, brakes, fluid services on schedule
-    auto_approve_below: 0
-    requires_approval_above: 0
-
-  - key: subscription_signup
-    label: Care Plan Signup
-    description: Customer enrolls in monthly maintenance plan
-    auto_approve_below: 99999
-    requires_approval_above: 99999
-
-  - key: subscription_renewal
-    label: Care Plan Renewal
-    description: Auto-renew monthly plan, charge saved card
-    auto_approve_below: 99999
-    requires_approval_above: 99999
-
-  - key: vehicle_appraisal
-    label: Vehicle Appraisal / Buy
-    description: Shop buying a customer's vehicle
-    auto_approve_below: 0
-    requires_approval_above: 0
-
-  - key: vehicle_listing
-    label: Vehicle Listing / Sell
-    description: Shop listing a vehicle for sale on website
-    auto_approve_below: 99999
-    requires_approval_above: 99999
-
-# Care plan tiers (populated by interview)
-plans: []
-
-# Notification preferences
+- key: diagnosis
+  label: Diagnosis & Inspection
+  description: Initial concern, test drive, DTC scan, visual inspection
+  auto_approve_below: 0
+  requires_approval_above: 0
+- key: repair
+  label: Repair / Service
+  description: Labor + parts to fix diagnosed issue
+  auto_approve_below: 0
+  requires_approval_above: 0
+- key: estimate
+  label: Estimate / Quote
+  description: Written quote before authorization
+  auto_approve_below: 0
+  requires_approval_above: 0
+- key: maintenance
+  label: Scheduled Maintenance
+  description: Oil, tires, brakes, fluid services on schedule
+  auto_approve_below: 0
+  requires_approval_above: 0
+- key: subscription_signup
+  label: Care Plan Signup
+  description: Customer enrolls in monthly maintenance plan
+  auto_approve_below: 99999
+  requires_approval_above: 99999
+- key: subscription_renewal
+  label: Care Plan Renewal
+  description: Auto-renew monthly plan, charge saved card
+  auto_approve_below: 99999
+  requires_approval_above: 99999
+- key: vehicle_appraisal
+  label: Vehicle Appraisal / Buy
+  description: Shop buying a customer's vehicle
+  auto_approve_below: 0
+  requires_approval_above: 0
+- key: vehicle_listing
+  label: Vehicle Listing / Sell
+  description: Shop listing a vehicle for sale on website
+  auto_approve_below: 99999
+  requires_approval_above: 99999
+plans:
+- name: Essentials
+  price_cents: 1998
+  benefits:
+  - Oil & filter service (1x/year)
+  - Tire rotation (1x/year)
+  - Fluid level inspection & top-off
+  - Basic multipoint visual inspection
+  - Dashboard warning light check
+  - 5% discount on repairs
+- name: PLUS
+  price_cents: 3999
+  benefits:
+  - Brake pad/rotor inspection (1x/year)
+  - Battery health test (1x/year)
+  - Alignment check (1x/year)
+  - Cabin air filter replacement (1x/year)
+  - Wiper blade replacement (1x/year)
+  - Full DVI with photo report (1x/year)
+  - 10% discount on repairs
+  - Priority scheduling
+- name: PREMIUM
+  price_cents: 6998
+  benefits:
+  - Full DTC diagnostic scan (as needed)
+  - Fuel system cleaning (1x/year)
+  - AC system service (1x/year)
+  - Transmission fluid service (1x/year)
+  - Brake fluid service (1x/year)
+  - Coolant flush (1x/year)
+  - 15% discount on repairs
+  - Priority scheduling + loaner vehicle
+  - Roadside assistance
 notifications:
   p0_channel: telegram
-  p1_digest_hours: [8, 16]
-  sms_sender_name: "NextLevel"
-
-# Execution tuning
+  p1_digest_hours:
+  - 8
+  - 16
+  sms_sender_name: NextLevel
 execution:
   max_retries: 3
   backoff_base_ms: 200
@@ -77,3 +96,8 @@ execution:
   circuit_breaker_cooldown_s: 60
   outbox_poll_interval_ms: 1000
   verification_interval_ms: 5000
+labor_rate_ccents: 12500
+parts_supplier_email: "Nexpart (WHI Certified Partner \u2014 integrated Shop Management\
+  \ System)"
+approval_threshold_cents: 50000
+sms_sender_name: Next Level Auto
