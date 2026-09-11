@@ -1,0 +1,11 @@
+date,customer,vin,concern,diag,total,mileage
+2024-01-01,John Smith,WBA3A5C55CF2,check engine light on,scan DTCs found P0300 P0301,450.00,65000
+2024-01-02,Jane Doe,1HGBH41JXMN109186,oil change,scheduled maintenance,89.99,30000
+2024-01-03,Bob Jones,5YJSA1DG5DFP12345,brake noise,inspect brake pads rotors,320.50,42000
+2024-01-04,Alice Brown,WBA3A5C55CF2,transmission slip,road test diagnose,1250.00,68000
+2024-01-05,Charlie Wilson,1FTFW1ET5EFD67890,tire rotation,rotate and balance,75.00,25000
+2024-01-06,Diana Lee,5YJSA1DG5DFP12345,AC not working,recharge R134a,210.75,43500
+2024-01-07,Edward Kim,JTDKN3DU0A0123456,battery dead,test battery and replace,185.00,88000
+2024-01-08,Fiona Garcia,1HGBH41JXMN109186,scheduled 60k service,full inspection fluid change,650.00,60000
+2024-01-09,George Harris,WBA3A5C55CF2,make noise when turning,CV axle replacement,890.00,72000
+2024-01-10,Hannah Jackson,1FTFW1ET5EFD67890,estimate for engine light,diagnosis scan P0420,350.00,48000

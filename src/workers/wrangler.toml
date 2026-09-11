@@ -1,0 +1,22 @@
+name = "next-level-auto-gateway"
+main = "src/workers/tool_gateway.ts"
+compatibility_date = "2024-06-01"
+
+[vars]
+NHTSA_BASE = "https://vpic.nhtsa.dot.gov/api"
+
+[[kv_namespaces]]
+binding = "MOMENTS_KV"
+id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Cron for verification worker
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Secrets (set via wrangler secret put):
+# SUPABASE_URL, SUPABASE_SERVICE_KEY
+# TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+# STRIPE_SECRET_KEY
+# TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_ID
+# SHOP_API_BASE, SHOP_API_KEY
+# WEBSITE_WEBHOOK_URL

@@ -1,0 +1,79 @@
+name: next-level-auto
+stages:
+  - capture
+  - plan
+  - approve
+  - execute
+  - verify
+  - close
+
+# 8 canonical moment types — inferred from RO history
+moments:
+  - key: diagnosis
+    label: Diagnosis & Inspection
+    description: Initial concern, test drive, DTC scan, visual inspection
+    auto_approve_below: 0
+    requires_approval_above: 0
+
+  - key: repair
+    label: Repair / Service
+    description: Labor + parts to fix diagnosed issue
+    auto_approve_below: 0
+    requires_approval_above: 0
+
+  - key: estimate
+    label: Estimate / Quote
+    description: Written quote before authorization
+    auto_approve_below: 0
+    requires_approval_above: 0
+
+  - key: maintenance
+    label: Scheduled Maintenance
+    description: Oil, tires, brakes, fluid services on schedule
+    auto_approve_below: 0
+    requires_approval_above: 0
+
+  - key: subscription_signup
+    label: Care Plan Signup
+    description: Customer enrolls in monthly maintenance plan
+    auto_approve_below: 99999
+    requires_approval_above: 99999
+
+  - key: subscription_renewal
+    label: Care Plan Renewal
+    description: Auto-renew monthly plan, charge saved card
+    auto_approve_below: 99999
+    requires_approval_above: 99999
+
+  - key: vehicle_appraisal
+    label: Vehicle Appraisal / Buy
+    description: Shop buying a customer's vehicle
+    auto_approve_below: 0
+    requires_approval_above: 0
+
+  - key: vehicle_listing
+    label: Vehicle Listing / Sell
+    description: Shop listing a vehicle for sale on website
+    auto_approve_below: 99999
+    requires_approval_above: 99999
+
+# Care plan tiers (populated by interview)
+plans: []
+
+# Notification preferences
+notifications:
+  p0_channel: telegram
+  p1_digest_hours: [8, 16]
+  sms_sender_name: "NextLevel"
+
+# Execution tuning
+execution:
+  max_retries: 3
+  backoff_base_ms: 200
+  backoff_multiplier: 5
+  jitter_ms: 50
+  circuit_breaker_threshold: 5
+  circuit_breaker_window_s: 30
+  circuit_breaker_cooldown_s: 60
+  outbox_poll_interval_ms: 1000
+  verification_interval_ms: 5000

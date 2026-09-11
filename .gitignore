@@ -1,0 +1,12 @@
+# Next Level Auto — gitignore
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+.wrangler/
+.DS_Store
+*.log
+simulation_report.json
+moment_inventory.json

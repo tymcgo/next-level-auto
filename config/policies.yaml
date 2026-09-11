@@ -1,0 +1,50 @@
+# Governance policies — all thresholds in cents
+approval:
+  # Above this estimate total (cents), require owner approval via Telegram
+  threshold_cents: 0
+  # SLA before escalation SMS (seconds)
+  sla_seconds: 10800
+  # After SLA breach, send escalation SMS
+  escalation_sms: true
+
+parts:
+  # Default parts margin multiplier (1.0 = no markup)
+  margin_multiplier: 1.0
+  supplier_email: ""
+
+buy_sell:
+  # Max the shop will offer for a vehicle (cents)
+  max_appraisal_cents: 0
+  # Minimum RO age (days) before a vehicle can be listed
+  min_ro_age_days: 0
+  # webhook target for website inventory
+  website_webhook_url: ""
+
+telegram:
+  # Chat ID for owner approval requests
+  owner_chat_id: 0
+  # Daily digest target chat
+  digest_chat_id: 0
+
+# Failure mode enablement — every mode can be toggled
+failure_modes:
+  idempotency_keys: true
+  transactional_outbox: true
+  dead_letter_queue: true
+  circuit_breaker: true
+  exponential_backoff: true
+  schema_registry: true
+  scoped_memory: true
+  planner_executor_split: true
+  required_outcome_verification: true
+  audit_log: true
+  prompt_injection_filter: true
+  secret_from_env_only: true
+  partition_by_vin: true
+  jitter: true
+  dlq_retry_manual: true
+  approval_timeout_escalation: true
+  subscription_idempotency: true
+  buy_sell_approval_gate: true
+  inventory_reconciliation: true
+  sms_test_mode: true
