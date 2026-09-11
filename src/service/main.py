@@ -12,18 +12,18 @@ import os
 import sys
 from typing import Any
 
-# Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+# Ensure src is on path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-from schemas import NextLevelMoment, CustomerContext, Plan, MomentType
-from agent import PlannerAgent
-from tools import build_default_registry, sanitize_input
-from governance import GovernanceEngine, NotificationRouter, SLAMonitor
+from src.schemas import CustomerContext, NextLevelMoment, Plan, PlanStep
+from src.agent import PlannerAgent
+from src.tools import build_default_registry, sanitize_input
+from src.governance import GovernanceEngine, NotificationRouter, SLAMonitor
 
 app = FastAPI(title="Next Level Auto — Agentic Service")
 

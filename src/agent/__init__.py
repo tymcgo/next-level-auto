@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import yaml
 
-from .schemas import CustomerContext, NextLevelMoment, Plan, PlanStep
+from schemas import CustomerContext, NextLevelMoment, Plan, PlanStep
 
 SYSTEM_PROMPT = """You are Next Level Auto estimator.
 Input: a Moment (current shop event) + Customer last 2 ROs + config.yaml rules.

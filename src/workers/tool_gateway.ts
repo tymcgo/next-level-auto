@@ -157,7 +157,7 @@ async function transcribeVoice(env: Env, audioBytes: ArrayBuffer): Promise<strin
 
 async function extractMomentFromText(env: Env, text: string): Promise<any> {
   const raw = await callLLM(env, [
-    { role: 'system', content: 'Extract structured auto repair data from the customer message. Return JSON: {"vin": "...", "mileage": null, "concern": "...", "dtcs": [], "parts_needed": [], "labor_hours": 0.0, "subscription_plan": null, "moment_type": "diagnosis|repair|estimate|maintenance|subscription_signup|subscription_renewal|vehicle_appraisal|vehicle_listing"}' },
+    { role: 'system', content: 'Extract structured auto repair data from the customer message. Return JSON: {"vin": "...", "mileage": null, "concern": "...", "dtcs": [], "parts_needed": [], "labor_hours": 0.0, "subscription_plan": null, "event_type": "diagnosis|repair|estimate|maintenance|subscription_signup|subscription_renewal|vehicle_appraisal|vehicle_listing", "raw_data": "..."}' },
     { role: 'user', content: text },
   ], 500);
   return JSON.parse(raw);

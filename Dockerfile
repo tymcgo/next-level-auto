@@ -17,5 +17,5 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-# Run
+# Run as module so relative imports work
 CMD ["python", "-m", "uvicorn", "src.service.main:app", "--host", "0.0.0.0", "--port", "8080"]

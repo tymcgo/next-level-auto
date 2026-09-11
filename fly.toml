@@ -1,0 +1,32 @@
+# Fly.io configuration for Next Level Auto Python agentic service
+app = "nla-agentic"
+primary_region = "ord"  # Edmonton, Canada (close to Tyler)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  PYTHONPATH = "/app/src"
+  CONFIG_PATH = "/app/config/config.yaml"
+  POLICIES_PATH = "/app/config/policies.yaml"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# Secrets (set via fly secrets set):
+# SUPABASE_URL, SUPABASE_SERVICE_KEY
+# LLM_API_BASE, LLM_API_KEY, LLM_MODEL
+# TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_ID
+# TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+# STRIPE_SECRET_KEY
