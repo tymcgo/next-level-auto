@@ -1,0 +1,113 @@
+# config.integration.yaml — Integration config for CF Worker <-> Python Service
+# Both services deployed — this file wires them together
+
+# =============================================================================
+# SERVICE ENDPOINTS
+# =============================================================================
+services:
+  # Cloudflare Worker (deployed via wrangler)
+  worker:
+    url: "https://nla-telegram.your-subdomain.workers.dev"
+    routes:
+      telegram_webhook: "/"           # Telegram sends here
+      dashboard_api: "/api/*"         # Next.js dashboard calls here
+  
+  # Python FastAPI on Fly.io (deployed via fly.io)
+  python:
+    url: "https://nla-agent.fly.dev"  # Your Fly.io URL
+    endpoints:
+      plan: "/plan"                   # POST event → get Plan
+      execute: "/execute"             # POST tool step → execute
+      govern: "/govern"               # POST action → governance
+      health: "/health"               # GET health check
+
+# =============================================================================
+# INTEGRATION FLOW
+# =============================================================================
+flow:
+  # 1. Telegram message arrives at CF Worker
+  # 2. Worker extracts text (voice→Whisper, VIN photo→OCR) via OpenRouter
+  # 3. Worker POSTs extracted data to Python /plan
+  # 4. Python returns PlanSchema JSON
+  # 5. Worker executes each step:
+  #    - For external APIs (NHTSA, Stripe, Twilio): Worker calls directly
+  #    - For DB operations (create_ro, create_estimate): Worker POSTs to Python /execute
+  # 6. If approval needed: Worker POSTs to Python /govern → Telegram approval buttons
+  
+  telegram_to_plan:
+    - step: "telegram_webhook"
+      service: "worker"
+      action: "extract_and_normalize"
+    - step: "post_plan"
+      service: "worker"
+      target: "python /plan"
+    - step: "execute_steps"
+      service: "worker"
+      target: "mix (direct + python /execute)"
+    - step: "govern_if_needed"
+      service: "worker"
+      target: "python /govern"
+
+# =============================================================================
+# SCHEMA ALIGNMENT
+# =============================================================================
+schemas:
+  # Python side uses: NextLevelMoment, CustomerContext, Plan
+  # TypeScript side uses: NextLevelEvent, PlanSchema
+  # Both map to the same DB schema — field names must match
+  
+  event_mapping:
+    # Python → TypeScript
+    moment_id: "id"
+    moment_type: "event_type"
+    vin: "vin"
+    timestamp: "timestamp"
+    raw_data: "raw"
+    extracted_data: "normalized"
+    source: "source"
+    actor: "actor_id"
+  
+  plan_mapping:
+    # Python → TypeScript
+    summary: "customer_summary"
+    vehicle_info: "vehicle_summary"
+    diagnosis: "diagnosis"
+    actions: "steps"
+    needs_approval: "requires_approval"
+    approval_reason: "approval_reason"
+    estimated_total: "total_estimate"
+    notes: "notes"
+
+# =============================================================================
+# ENDPOINT CONTRACTS
+# =============================================================================
+contracts:
+  /plan:
+    method: POST
+    request:
+      event: "NextLevelEvent dict"
+      customer_summary: "string"
+      recent_ros: "list of RO summaries"
+    response:
+      success: "boolean"
+      plan: "PlanSchema dict"
+
+  /execute:
+    method: POST
+    request:
+      tool: "string (8-tool allowlist)"
+      params: "dict (Zod-validated)"
+      context: "dict (idempotency_key, correlation_id, actor_id)"
+    response:
+      success: "boolean"
+      data: "dict (optional)"
+      error: "string (optional)"
+
+  /govern:
+    method: POST
+    request:
+      action: "string (request_approval, check_sla, escalate, send_digest)"
+      data: "dict (action-specific)"
+    response:
+      success: "boolean"
+      result: "dict (action-specific)"

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextlevelauto.io/schemas/v1.json",
+  "title": "NextLevelEvent",
+  "description": "Canonical event schema for Next Level Auto shop management system. All events are append-only and idempotent.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["id", "schema_version", "idempotency_key", "event_type", "vin", "vin_last6", "timestamp", "raw", "source"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique event UUID v7 (time-ordered)"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Schema version for backward compatibility"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256(vin + timestamp + raw). Ensures exactly-once processing."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "voice_note",
+        "vin_photo",
+        "sms_forward",
+        "webhook_in",
+        "ro_created",
+        "estimate_created",
+        "estimate_approved",
+        "parts_ordered",
+        "parts_received",
+        "subscription_signed",
+        "subscription_cancelled",
+        "vehicle_listed",
+        "vehicle_sold",
+        "vehicle_appraised",
+        "package_purchased",
+        "payment_received",
+        "payment_failed",
+        "approval_requested",
+        "approval_granted",
+        "approval_denied",
+        "audit_log"
+      ]
+    },
+    "vin": {
+      "type": "string",
+      "pattern": "^[A-HJ-NPR-Z0-9]{17}$",
+      "description": "17-character Vehicle Identification Number"
+    },
+    "vin_last6": {
+      "type": "string",
+      "pattern": "^[A-HJ-NPR-Z0-9]{6}$",
+      "description": "Last 6 chars of VIN for partitioning"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of event occurrence"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of event receipt"
+    },
+    "raw": {
+      "type": "object",
+      "description": "Original unmodified input data"
+    },
+    "normalized": {
+      "type": "object",
+      "description": "Normalized/processed data extracted from raw"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["telegram_voice", "telegram_photo", "telegram_sms", "webhook", "dashboard", "system"],
+      "description": "Origin of the event"
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Links related events across the system"
+    },
+    "actor_id": {
+      "type": "string",
+      "description": "User/agent who triggered the event"
+    },
+    "cost_tokens": {
+      "type": "object",
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "model": { "type": "string" },
+        "estimated_cost_usd": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

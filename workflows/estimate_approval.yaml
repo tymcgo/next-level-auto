@@ -1,0 +1,97 @@
+# Workflow: estimate_approval.yaml
+# Trigger: estimate_created event with total > approval threshold
+# Policy: If total > $750, require Tyler's approval within 3h
+
+name: estimate_approval
+version: "1.0.0"
+description: "Route estimates above threshold for owner approval before customer notification"
+
+trigger:
+  event_type: "estimate_created"
+  condition: "total > 750.00"
+
+state_machine:
+  states:
+    - name: "pending_review"
+      initial: true
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "estimate_approval_required"
+            target_type: "estimate"
+
+    - name: "awaiting_approval"
+      transitions:
+        - event: "approval_granted"
+          target: "approved"
+          guard: "approver == 'tyler'"
+        - event: "approval_denied"
+          target: "denied"
+        - event: "timeout"
+          target: "escalated"
+          after: "180 minutes"  # 3h SLA
+        - event: "customer_approved"
+          target: "customer_approved"
+          guard: "total <= 750.00"
+
+    - name: "approved"
+      final: true
+      on_enter:
+        - action: "update_estimate_status"
+          params:
+            status: "approved"
+        - action: "send_sms"
+          params:
+            template: "estimate_approved"
+        - action: "audit_log"
+          params:
+            action: "estimate_approved"
+
+    - name: "denied"
+      final: true
+      on_enter:
+        - action: "update_estimate_status"
+          params:
+            status: "declined"
+        - action: "audit_log"
+          params:
+            action: "estimate_denied"
+
+    - name: "escalated"
+      on_enter:
+        - action: "escalate_notification"
+          params:
+            channel: "telegram"
+            priority: "P0"
+        - action: "audit_log"
+          params:
+            action: "estimate_escalation"
+      transitions:
+        - event: "approval_granted"
+          target: "approved"
+        - event: "approval_denied"
+          target: "denied"
+
+    - name: "customer_approved"
+      final: true
+      on_enter:
+        - action: "update_estimate_status"
+          params:
+            status: "customer_approved"
+
+required_outcomes:
+  - "estimate status updated"
+  - "audit log entry created"
+  - "customer notified (if approved)"
+
+policy:
+  approval_threshold: 750.00
+  approver: "tyler"
+  sla_minutes: 180
+  escalation_interval_minutes: 15
+  max_escalations: 3
+
+sla:
+  initial_response_minutes: 30
+  resolution_minutes: 180
+  warning_at_minutes: 120  # Alert at 2h if still pending

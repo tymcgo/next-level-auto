@@ -1,0 +1,149 @@
+# Workflow: subscription_signup.yaml
+# Trigger: customer_approves_subscription event
+# Policy: Create Stripe subscription, provision credits, notify customer
+
+name: subscription_signup
+version: "1.0.0"
+description: "Convert subscription approval into active Stripe subscription with credit provisioning"
+
+trigger:
+  event_type: "subscription_signed"
+  condition: "customer_approves == true"
+
+state_machine:
+  states:
+    - name: "validating_customer"
+      initial: true
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "subscription_validation_started"
+            target_type: "subscription"
+
+    - name: "creating_checkout"
+      on_enter:
+        - action: "create_stripe_subscription"
+          params:
+            customer_id: "{{ event.customer_id }}"
+            vehicle_id: "{{ event.vehicle_id }}"
+            plan_type: "{{ event.plan_type }}"
+            success_url: "{{ config.domain }}/subscriptions/success?session_id={CHECKOUT_SESSION_ID}"
+            cancel_url: "{{ config.domain }}/subscriptions/cancel"
+      transitions:
+        - event: "checkout_created"
+          target: "awaiting_payment"
+        - event: "checkout_failed"
+          target: "failed"
+
+    - name: "awaiting_payment"
+      on_enter:
+        - action: "send_sms"
+          params:
+            template: "subscription_checkout_link"
+            data:
+              checkout_url: "{{ transition_data.checkout_url }}"
+              plan_name: "{{ event.plan_type }}"
+      transitions:
+        - event: "payment_succeeded"
+          target: "provisioning"
+        - event: "payment_failed"
+          target: "payment_failed"
+        - event: "timeout"
+          target: "checkout_expired"
+          after: "24 hours"
+
+    - name: "provisioning"
+      on_enter:
+        - action: "create_subscription_record"
+          params:
+            plan_type: "{{ event.plan_type }}"
+            stripe_subscription_id: "{{ transition_data.stripe_subscription_id }}"
+            customer_id: "{{ event.customer_id }}"
+            vehicle_id: "{{ event.vehicle_id }}"
+        - action: "provision_customer_credits"
+          params:
+            plan_type: "{{ event.plan_type }}"
+            customer_id: "{{ event.customer_id }}"
+        - action: "audit_log"
+          params:
+            action: "subscription_activated"
+            target_type: "subscription"
+      transitions:
+        - event: "provisioning_complete"
+          target: "active"
+
+    - name: "active"
+      final: true
+      on_enter:
+        - action: "send_sms"
+          params:
+            template: "subscription_active_confirmation"
+            data:
+              plan_name: "{{ event.plan_type }}"
+        - action: "audit_log"
+          params:
+            action: "subscription_active"
+            target_type: "subscription"
+
+    - name: "payment_failed"
+      on_enter:
+        - action: "send_sms"
+          params:
+            template: "subscription_payment_failed"
+        - action: "audit_log"
+          params:
+            action: "subscription_payment_failed"
+            target_type: "subscription"
+      transitions:
+        - event: "retry_payment"
+          target: "awaiting_payment"
+        - event: "timeout"
+          target: "cancelled"
+          after: "72 hours"
+
+    - name: "checkout_expired"
+      final: true
+      on_enter:
+        - action: "send_sms"
+          params:
+            template: "subscription_checkout_expired"
+        - action: "audit_log"
+          params:
+            action: "subscription_checkout_expired"
+            target_type: "subscription"
+
+    - name: "cancelled"
+      final: true
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "subscription_cancelled"
+            target_type: "subscription"
+
+    - name: "failed"
+      final: true
+      on_enter:
+        - action: "notify_owner"
+          params:
+            message: "Subscription creation failed for customer {{ event.customer_id }}"
+            priority: "P0"
+        - action: "audit_log"
+          params:
+            action: "subscription_failed"
+            target_type: "subscription"
+
+required_outcomes:
+  - "Stripe subscription created"
+  - "Customer credits provisioned"
+  - "Customer notified via SMS"
+
+policy:
+  retry_payment_attempts: 2
+  checkout_expiry_hours: 24
+  grace_period_days: 3
+  auto_cancel_after_failures: true
+
+sla:
+  checkout_creation_minutes: 5
+  payment_completion_hours: 24
+  provisioning_minutes: 15

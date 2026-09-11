@@ -1,0 +1,146 @@
+# Workflow: parts_order.yaml
+# Trigger: parts_requested event (from estimate or direct)
+# Policy: Idempotency check before ordering, escalate if no confirmation in 24h
+
+name: parts_order
+version: "1.0.0"
+description: "Order parts from supplier with idempotency and confirmation tracking"
+
+trigger:
+  event_type: "estimate_approved"
+  condition: "parts_needed == true"
+
+state_machine:
+  states:
+    - name: "validating_stock"
+      initial: true
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "parts_validation_started"
+            target_type: "parts_order"
+
+    - name: "ordering"
+      on_enter:
+        - action: "order_parts"
+          params:
+            supplier: "{{ config.preferred_supplier }}"
+            parts: "{{ event.parts_list }}"
+            ro_id: "{{ event.ro_id }}"
+      transitions:
+        - event: "order_confirmed"
+          target: "ordered"
+        - event: "order_failed"
+          target: "failed"
+        - event: "order_partial"
+          target: "partial"
+
+    - name: "ordered"
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "parts_ordered"
+            target_type: "parts_order"
+        - action: "update_ro_status"
+          params:
+            status: "waiting_parts"
+      transitions:
+        - event: "delivery_received"
+          target: "received"
+        - event: "delivery_delayed"
+          target: "delayed"
+        - event: "timeout"
+          target: "overdue"
+          after: "72 hours"
+
+    - name: "partial"
+      on_enter:
+        - action: "audit_log"
+          params:
+            action: "parts_partial_order"
+            target_type: "parts_order"
+        - action: "notify_owner"
+          params:
+            message: "Partial parts order — some items backordered"
+            priority: "P1"
+      transitions:
+        - event: "remaining_received"
+          target: "received"
+
+    - name: "received"
+      final: true
+      on_enter:
+        - action: "update_inventory"
+          params:
+            action: "receive_stock"
+        - action: "update_ro_status"
+          params:
+            status: "in_progress"
+        - action: "audit_log"
+          params:
+            action: "parts_received"
+            target_type: "parts_order"
+
+    - name: "delayed"
+      on_enter:
+        - action: "notify_owner"
+          params:
+            message: "Parts delivery delayed"
+            priority: "P1"
+      transitions:
+        - event: "delivery_received"
+          target: "received"
+        - event: "timeout"
+          target: "escalated"
+          after: "168 hours"  # 7 days
+
+    - name: "overdue"
+      on_enter:
+        - action: "escalate_notification"
+          params:
+            channel: "telegram"
+            priority: "P0"
+        - action: "audit_log"
+          params:
+            action: "parts_overdue"
+            target_type: "parts_order"
+      transitions:
+        - event: "delivery_received"
+          target: "received"
+
+    - name: "failed"
+      final: true
+      on_enter:
+        - action: "notify_owner"
+          params:
+            message: "Parts order failed — manual intervention required"
+            priority: "P0"
+        - action: "audit_log"
+          params:
+            action: "parts_order_failed"
+            target_type: "parts_order"
+
+    - name: "escalated"
+      final: true
+      on_enter:
+        - action: "escalate_notification"
+          params:
+            channel: "telegram"
+            priority: "P0"
+
+required_outcomes:
+  - "Parts order placed with supplier"
+  - "Inventory updated on receipt"
+  - "RO status updated to in_progress"
+
+policy:
+  preferred_supplier: "NAPA"
+  fallback_supplier: "Local OEM Dealer"
+  max_order_attempts: 2
+  auto_receive_on_delivery: true
+  require_receiving_confirmation: true
+
+sla:
+  order_placement_minutes: 30
+  delivery_warning_hours: 48
+  delivery_overdue_hours: 72

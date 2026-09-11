@@ -1,0 +1,51 @@
+# .gitignore
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Wrangler
+.wrangler/
+wrangler.toml.bak
+
+# Vercel
+.vercel
+
+# Docker
+docker-compose.override.yml
+
+# Temp
+*.tmp
+*.temp
