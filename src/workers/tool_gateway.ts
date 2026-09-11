@@ -35,6 +35,9 @@ type Env = {
   WEBSITE_WEBHOOK_URL: string;
   SHOP_API_BASE: string;
   SHOP_API_KEY: string;
+  LLM_API_BASE: string;
+  LLM_API_KEY: string;
+  LLM_MODEL: string;
 };
 
 // ---------- Prompt injection filter ----------
@@ -128,7 +131,47 @@ function backoffWithJitter(attempt: number, baseMs: number, multiplier: number, 
   return exp + jitter;
 }
 
-// ---------- Tool implementations ----------
+// ---------- LLM via OpenRouter ----------
+async function callLLM(env: Env, messages: any[], max_tokens: number = 1200, temperature: number = 0, json: boolean = true): Promise<any> {
+  const r = await fetch(`${env.LLM_API_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${env.LLM_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: env.LLM_MODEL, messages, max_tokens, temperature, ...(json ? { response_format: { type: 'json_object' } } : {}) }),
+  });
+  if (!r.ok) throw new Error(`LLM error ${r.status}: ${await r.text()}`);
+  const data = await r.json();
+  return data.choices[0].message.content;
+}
+
+async function transcribeVoice(env: Env, audioBytes: ArrayBuffer): Promise<string> {
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(audioBytes)));
+  const r = await fetch(`${env.LLM_API_BASE}/audio/transcriptions`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${env.LLM_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'openai/whisper-large-v3', file: `data:audio/ogg;base64,${b64}`, response_format: 'text' }),
+  });
+  if (!r.ok) throw new Error(`Whisper error ${r.status}: ${await r.text()}`);
+  return await r.text();
+}
+
+async function extractMomentFromText(env: Env, text: string): Promise<any> {
+  const raw = await callLLM(env, [
+    { role: 'system', content: 'Extract structured auto repair data from the customer message. Return JSON: {"vin": "...", "mileage": null, "concern": "...", "dtcs": [], "parts_needed": [], "labor_hours": 0.0, "subscription_plan": null, "moment_type": "diagnosis|repair|estimate|maintenance|subscription_signup|subscription_renewal|vehicle_appraisal|vehicle_listing"}' },
+    { role: 'user', content: text },
+  ], 500);
+  return JSON.parse(raw);
+}
+
+async function extractVinFromImage(env: Env, imageBytes: ArrayBuffer): Promise<any> {
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(imageBytes)));
+  const raw = await callLLM(env, [
+    { role: 'user', content: [
+      { type: 'text', text: 'Read the VIN from this photo. Return JSON: {"vin": "...", "mileage": null}' },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
+    ]},
+  ], 200, 0, false);
+  return JSON.parse(raw);
+}
 
 async function decodeVin(args: any, env: Env) {
   const r = await fetch(`${env.NHTSA_BASE}/vehicles/DecodeVin/${args.vin}?format=json`);
@@ -339,30 +382,65 @@ app.post('/telegram-webhook', async (c) => {
     const filePath = fileData.result.file_path;
     const audioRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
     const audioBytes = await audioRes.arrayBuffer();
-    // TODO: Send to Whisper via LiteLLM for transcription
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: '🎤 Voice note received. Transcription coming soon (LiteLLM not yet configured).' }),
-    });
-    return c.json({ status: 'voice_received' });
+    try {
+      const transcript = await transcribeVoice(env, audioBytes);
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `🎤 Transcribed: ${transcript}\n⏳ Extracting structured data...` }),
+      });
+      const moment = await extractMomentFromText(env, transcript);
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `📝 Extracted Moment:\n${JSON.stringify(moment, null, 2)}` }),
+      });
+    } catch (e: any) {
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `❌ Error: ${e.message}` }),
+      });
+    }
+    return c.json({ status: 'voice_processed' });
   }
 
   // Handle photos (VIN)
   if (message.photo) {
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: '📸 VIN photo received. OCR coming soon (LiteLLM not yet configured).' }),
-    });
-    return c.json({ status: 'photo_received' });
+    const photo = message.photo[message.photo.length - 1];
+    const fileId = photo.file_id;
+    const fileInfo = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+    const fileData = await fileInfo.json();
+    const filePath = fileData.result.file_path;
+    const imgRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+    const imgBytes = await imgRes.arrayBuffer();
+    try {
+      const result = await extractVinFromImage(env, imgBytes);
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `📸 VIN: ${result.vin || 'unknown'}\nMileage: ${result.mileage || 'unknown'}` }),
+      });
+    } catch (e: any) {
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `❌ Error: ${e.message}` }),
+      });
+    }
+    return c.json({ status: 'photo_processed' });
   }
 
   // Handle text (forwarded SMS or direct message)
   if (text) {
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: `📨 Received: "${text}"\n\nProcessing coming soon (LiteLLM not yet configured).` }),
-    });
-    return c.json({ status: 'text_received' });
+    try {
+      const moment = await extractMomentFromText(env, text);
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `📨 Extracted Moment:\n${JSON.stringify(moment, null, 2)}` }),
+      });
+    } catch (e: any) {
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: `❌ Error: ${e.message}` }),
+      });
+    }
+    return c.json({ status: 'text_processed' });
   }
 
   return c.json({ status: 'unhandled' });
