@@ -1,5 +1,5 @@
 name = "next-level-auto-gateway"
-main = "src/workers/tool_gateway.ts"
+main = "tool_gateway.ts"
 compatibility_date = "2024-06-01"
 
 [vars]
@@ -7,7 +7,7 @@ NHTSA_BASE = "https://vpic.nhtsa.dot.gov/api"
 
 [[kv_namespaces]]
 binding = "MOMENTS_KV"
-id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+id = "189280f63ccd4be09f8130854b4bc53e"
 
 # Cron for verification worker
 [triggers]

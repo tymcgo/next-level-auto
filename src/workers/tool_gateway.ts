@@ -269,4 +269,103 @@ app.post('/tool', async (c) => {
 
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// ---------- Telegram Webhook ----------
+app.post('/telegram-webhook', async (c) => {
+  const env = c.env;
+  let update: any;
+  try { update = await c.req.json(); } catch { return c.json({ error: 'invalid JSON' }, 400); }
+
+  // Handle callback queries (inline button presses)
+  if (update.callback_query) {
+    const data = update.callback_query.data;
+    const chatId = update.callback_query.message?.chat?.id;
+    if (data?.startsWith('approve:yes:')) {
+      const vin = data.split(':')[2];
+      // Log approval to audit_log
+      await fetch(`${env.SUPABASE_URL}/rest/v1/audit_log`, {
+        method: 'POST',
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ event: 'approval_granted', actor: 'owner', data: { vin, source: 'telegram' } }),
+      });
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callback_query_id: update.callback_query.id, text: `✅ Approved ${vin}` }),
+      });
+      return c.json({ status: 'approved', vin });
+    } else if (data?.startsWith('approve:no:')) {
+      const vin = data.split(':')[2];
+      await fetch(`${env.SUPABASE_URL}/rest/v1/audit_log`, {
+        method: 'POST',
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ event: 'approval_rejected', actor: 'owner', data: { vin, source: 'telegram' } }),
+      });
+      await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callback_query_id: update.callback_query.id, text: `❌ Rejected ${vin}` }),
+      });
+      return c.json({ status: 'rejected', vin });
+    }
+  }
+
+  const message = update.message;
+  if (!message) return c.json({ status: 'no_message' });
+
+  const chatId = message.chat?.id;
+  const text = message.text || '';
+
+  // Handle /start
+  if (text === '/start') {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '👋 Welcome to Next Level Auto!\n\nSend me:\n- A voice note (concern/diagnosis)\n- A VIN photo\n- A forwarded SMS\n\nI will create a structured Moment and start the approval flow.' }),
+    });
+    return c.json({ status: 'welcomed' });
+  }
+
+  // Handle /stop (kill switch)
+  if (text === '/stop') {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '🛑 Bot paused. No new Moments will be processed. Contact owner to restart.' }),
+    });
+    return c.json({ status: 'stopped' });
+  }
+
+  // Handle voice notes
+  if (message.voice) {
+    const fileId = message.voice.file_id;
+    const fileInfo = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+    const fileData = await fileInfo.json();
+    const filePath = fileData.result.file_path;
+    const audioRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+    const audioBytes = await audioRes.arrayBuffer();
+    // TODO: Send to Whisper via LiteLLM for transcription
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '🎤 Voice note received. Transcription coming soon (LiteLLM not yet configured).' }),
+    });
+    return c.json({ status: 'voice_received' });
+  }
+
+  // Handle photos (VIN)
+  if (message.photo) {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '📸 VIN photo received. OCR coming soon (LiteLLM not yet configured).' }),
+    });
+    return c.json({ status: 'photo_received' });
+  }
+
+  // Handle text (forwarded SMS or direct message)
+  if (text) {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: `📨 Received: "${text}"\n\nProcessing coming soon (LiteLLM not yet configured).` }),
+    });
+    return c.json({ status: 'text_received' });
+  }
+
+  return c.json({ status: 'unhandled' });
+});
+
 export default app;
