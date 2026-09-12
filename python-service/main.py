@@ -9,7 +9,7 @@ import structlog
 import yaml
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORMiddleware
+from starlette.middleware.cors import CORSMiddleware
 
 from src.agent.planner import PlannerAgent
 from src.governance.governance_engine import GovernanceEngine
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Next Level Auto Agent", lifespan=lifespan)
 
 app.add_middleware(
-    CORMiddleware,
+    CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from typing import Any
 
@@ -111,7 +112,7 @@ class ToolRegistry:
         # Dispatch to handler
         handler = getattr(self, f"_handle_{tool_name}", None)
         if not handler:
-            return {"success": False, error: f"No handler for tool '{tool_name}'"}
+            return {"success": False, "error": f"No handler for tool '{tool_name}'"}
         
         try:
             result = await handler(params, context)
@@ -336,4 +337,3 @@ class ToolRegistry:
         return {"success": True, "data": res.json()}
 
 
-import os  # noqa: E402 — needed for secrets loading
